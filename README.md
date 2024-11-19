@@ -12,6 +12,11 @@ Frontend will run at http://localhost:3000.
 ```bash
 cd backend
 npm install
+```
+Add .env file in the root directory
+MONGODB_URI= your_DB_uri
+
+```bash
 npm run start:dev
 ```
 Backend will run at http://localhost:3001.
