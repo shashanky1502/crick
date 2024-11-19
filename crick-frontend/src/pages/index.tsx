@@ -14,10 +14,10 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  Box,
 } from "@mui/material";
 import { makeStyles } from "@mui/styles";
 
-// Types
 interface Player {
   id: number;
   name: string;
@@ -62,6 +62,10 @@ interface MatchState {
   balls: number;
   extras: Extras;
   currentOverRuns: number;
+  striker: BattingStats;
+  nonStriker: BattingStats;
+  bowler: BowlingStats;
+  commentary: string[];
 }
 
 interface BallOutcome {
@@ -72,7 +76,7 @@ interface BallOutcome {
   fielder?: string;
 }
 
-// Styles
+
 const useStyles = makeStyles({
   container: {
     padding: "16px",
@@ -88,17 +92,33 @@ const useStyles = makeStyles({
   },
   scorecard: {
     padding: "16px",
+    marginBottom: "16px",
   },
   commentary: {
     padding: "16px",
     marginTop: "16px",
+    backgroundColor: "#e0f7fa",
+  },
+  commentaryText: {
+    color: "#00796b",
+  },
+  batsmanOnStrike: {
+    fontWeight: "bold",
+    color: "#d32f2f",
+  },
+  batsman: {
+    color: "#1976d2",
+  },
+  bowler: {
+    color: "#388e3c",
+  },
+  extras: {
+    color: "#f57c00",
   },
 });
 
 const CricketScorer: React.FC = () => {
   const classes = useStyles();
-
-  // States
   const [matchState, setMatchState] = useState<MatchState>({
     teamName: "",
     opponentTeamName: "",
@@ -115,12 +135,10 @@ const CricketScorer: React.FC = () => {
       bye: 0,
     },
     currentOverRuns: 0,
-  });
-
-  const [players, setPlayers] = useState({
     striker: {} as BattingStats,
     nonStriker: {} as BattingStats,
     bowler: {} as BowlingStats,
+    commentary: [],
   });
 
   const [currentBall, setCurrentBall] = useState<BallOutcome>({
@@ -139,12 +157,11 @@ const CricketScorer: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch teams and players from backend
+  // Fetched mock teams and players from backend for now
   useEffect(() => {
     const fetchTeamsAndPlayers = async () => {
       try {
-        // Replace with actual API endpoint
-        const response = await fetch("http://localhost:3001/api/match/teams");
+        const response = await fetch("http://localhost:3001/teams");
         const data = await response.json();
         setTeams(data);
         setMatchState((prev) => ({
@@ -164,186 +181,71 @@ const CricketScorer: React.FC = () => {
     fetchTeamsAndPlayers();
   }, []);
 
-
-  const calculateStrikeRate = (runs: number, balls: number): number => {
-    return balls === 0 ? 0 : parseFloat(((runs / balls) * 100).toFixed(2));
-  };
-
-  const generateCommentary = (
-    outcome: BallOutcome,
-    bowler: string,
-    batsman: string
-  ): string => {
-    const descriptions: string[] = [];
-    let runsDescription = "";
-
-    if (outcome.isWicket) {
-      descriptions.push(`WICKET! ${batsman} ${outcome.wicketType || "is out"}`);
-      if (outcome.fielder) {
-        descriptions.push(`c ${outcome.fielder}`);
+  // Fetch the latest match state from backend
+  useEffect(() => {
+    const fetchLatestMatchState = async () => {
+      try {
+        const response = await fetch("http://localhost:3001/cricket/latest");
+        const updatedMatchState = await response.json();
+        setMatchState(updatedMatchState);
+        setCommentary(updatedMatchState.commentary);
+      } catch (err) {
+        setMatchState({
+          teamName: "",
+          opponentTeamName: "",
+          battingTeam: "",
+          fieldingTeam: "",
+          totalRuns: 0,
+          wickets: 0,
+          overs: 0,
+          balls: 0,
+          extras: {
+            wide: 0,
+            noball: 0,
+            legbye: 0,
+            bye: 0,
+          },
+          currentOverRuns: 0,
+          striker: {} as BattingStats,
+          nonStriker: {} as BattingStats,
+          bowler: {} as BowlingStats,
+          commentary: [],
+        })
       }
-    }
+    };
 
-    if (outcome.extras.includes("wide")) {
-      runsDescription = `Wide${outcome.runs ? ` +${outcome.runs}` : ""}`;
-    } else if (outcome.extras.includes("noball")) {
-      runsDescription = `No ball${outcome.runs ? ` +${outcome.runs}` : ""}`;
-      if (outcome.extras.includes("bye")) {
-        runsDescription += ` (bye)`;
-      } else if (outcome.extras.includes("legbye")) {
-        runsDescription += ` (leg bye)`;
-      }
-    } else if (outcome.extras.includes("bye")) {
-      runsDescription = `${outcome.runs} bye${outcome.runs !== 1 ? "s" : ""}`;
-    } else if (outcome.extras.includes("legbye")) {
-      runsDescription = `${outcome.runs} leg bye${
-        outcome.runs !== 1 ? "s" : ""
-      }`;
-    } else if (outcome.runs !== null) {
-      runsDescription = `${outcome.runs} run${outcome.runs !== 1 ? "s" : ""}`;
-    }
-
-    if (outcome.extras.includes("overthrow")) {
-      runsDescription += " (with overthrow)";
-    }
-
-    if (runsDescription) {
-      descriptions.push(runsDescription);
-    }
-
-    return `${bowler} to ${batsman}: ${descriptions.join(", ")}`;
-  };
-
+    fetchLatestMatchState();
+  }, []);
 
   const handleBallOutcome = async () => {
-    const { runs, extras, isWicket } = currentBall;
-    let newMatchState = { ...matchState };
-    let newPlayers = { ...players };
-    let runsToAdd = runs || 0;
-    let countAsBall = true;
-
-    // Wide Ball Logic
-    if (extras.includes("wide")) {
-      runsToAdd += 1;
-      countAsBall = false;
-      newMatchState.extras.wide += runsToAdd;
-      newPlayers.bowler.runs += runsToAdd;
-    }
-
-    // No Ball Logic
-    else if (extras.includes("noball")) {
-      runsToAdd += 1;
-      countAsBall = false;
-      newMatchState.extras.noball += 1;
-      newPlayers.bowler.runs += runsToAdd;
-
-      if (extras.includes("bye")) {
-        newMatchState.extras.bye += runs || 0;
-      } else if (extras.includes("legbye")) {
-        newMatchState.extras.legbye += runs || 0;
-      } else if (runs) {
-        newPlayers.striker.runs += runs;
-      }
-
-      newPlayers.striker.balls += 1;
-    }
-
-    // Bye/Leg Bye Logic
-    else if (extras.includes("legbye") || extras.includes("bye")) {
-      const extraType = extras.includes("legbye") ? "legbye" : "bye";
-      newMatchState.extras[extraType] += runsToAdd;
-      newPlayers.striker.balls += 1;
-      newPlayers.bowler.balls += 1;
-    }
-
-    // Normal Runs Logic
-    else if (runs !== null) {
-      newPlayers.striker.runs += runsToAdd;
-      newPlayers.striker.balls += 1;
-      newPlayers.bowler.runs += runsToAdd;
-      newPlayers.bowler.balls += 1;
-
-      if (runs === 4) newPlayers.striker.fours += 1;
-      if (runs === 6) newPlayers.striker.sixes += 1;
-    }
-
-    // Wicket Logic
-    if (isWicket && !extras.includes("wide") && !extras.includes("noball")) {
-      newMatchState.wickets += 1;
-      newPlayers.bowler.wickets += 1;
-    }
-
-    // Update match state
-    newMatchState.totalRuns += runsToAdd;
-    newMatchState.currentOverRuns += runsToAdd;
-
-    if (countAsBall) {
-      newMatchState.balls += 1;
-      if (newMatchState.balls === 6) {
-        if (newMatchState.currentOverRuns === 0) {
-          newPlayers.bowler.maidens += 1;
-        }
-        newPlayers.bowler.overs += 1;
-        newMatchState.overs += 1;
-        newMatchState.balls = 0;
-        newMatchState.currentOverRuns = 0;
-        newPlayers.bowler.balls = 0;
-      }
-    }
-
-    // Update player stats
-    newPlayers.striker.strikeRate = calculateStrikeRate(
-      newPlayers.striker.runs,
-      newPlayers.striker.balls
-    );
-    newPlayers.bowler.economy = parseFloat(
-      (
-        newPlayers.bowler.runs /
-        (newPlayers.bowler.overs + newPlayers.bowler.balls / 6)
-      ).toFixed(2)
-    );
-
-    // Rotate strike for odd runs
-    if (
-      (runsToAdd % 2 === 1 &&
-        !extras.includes("wide") &&
-        !extras.includes("noball")) ||
-      (newMatchState.balls === 0 && newMatchState.overs > 0)
-    ) {
-      const temp = newPlayers.striker;
-      newPlayers.striker = newPlayers.nonStriker;
-      newPlayers.nonStriker = temp;
-    }
-
-    // Generate and add commentary
-    const commentaryText = generateCommentary(
-      currentBall,
-      newPlayers.bowler.name,
-      newPlayers.striker.name
-    );
-
-    // Update states
-    setMatchState(newMatchState);
-    setPlayers(newPlayers);
-    setCommentary((prev) => [commentaryText, ...prev]);
-    setCurrentBall({ runs: null, extras: [], isWicket: false });
-
-    // Send ball data to backend
     try {
-      await fetch("http://localhost:3001/api/match/ball", {
+      // copy of matchState without _id fields
+      const matchStateCopy = JSON.parse(JSON.stringify(matchState));
+      delete matchStateCopy._id;
+      delete matchStateCopy.extras._id;
+      delete matchStateCopy.striker._id;
+      delete matchStateCopy.nonStriker._id;
+      delete matchStateCopy.bowler._id;
+
+      await fetch("http://localhost:3001/cricket/ball", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          matchState: newMatchState,
-          players: newPlayers,
+          matchState: matchStateCopy,
           ballOutcome: currentBall,
-          commentary: commentaryText,
         }),
       });
+
+      // Fetch match state 
+      const response = await fetch("http://localhost:3001/cricket/latest");
+      const updatedMatchState = await response.json();
+      setMatchState(updatedMatchState);
+      setCommentary(updatedMatchState.commentary);
+      setCurrentBall({ runs: null, extras: [], isWicket: false });
     } catch (err) {
-      setError("Failed to save ball data");
+      setError("Failed to process ball outcome");
     }
   };
 
@@ -379,13 +281,13 @@ const CricketScorer: React.FC = () => {
                 <FormControl variant="outlined" className={classes.formControl}>
                   <InputLabel>Striker</InputLabel>
                   <Select
-                    value={players.striker.id || ""}
+                    value={matchState.striker.id || ""}
                     onChange={(e) => {
                       const player = teams.team1.find(
                         (p) => p.id === Number(e.target.value)
                       );
                       if (player) {
-                        setPlayers((prev) => ({
+                        setMatchState((prev) => ({
                           ...prev,
                           striker: {
                             ...player,
@@ -413,13 +315,13 @@ const CricketScorer: React.FC = () => {
                 <FormControl variant="outlined" className={classes.formControl}>
                   <InputLabel>Non-Striker</InputLabel>
                   <Select
-                    value={players.nonStriker.id || ""}
+                    value={matchState.nonStriker.id || ""}
                     onChange={(e) => {
                       const player = teams.team1.find(
                         (p) => p.id === Number(e.target.value)
                       );
                       if (player) {
-                        setPlayers((prev) => ({
+                        setMatchState((prev) => ({
                           ...prev,
                           nonStriker: {
                             ...player,
@@ -447,13 +349,13 @@ const CricketScorer: React.FC = () => {
                 <FormControl variant="outlined" className={classes.formControl}>
                   <InputLabel>Bowler</InputLabel>
                   <Select
-                    value={players.bowler.id || ""}
+                    value={matchState.bowler.id || ""}
                     onChange={(e) => {
                       const player = teams.team2.find(
                         (p) => p.id === Number(e.target.value)
                       );
                       if (player) {
-                        setPlayers((prev) => ({
+                        setMatchState((prev) => ({
                           ...prev,
                           bowler: {
                             ...player,
@@ -603,13 +505,13 @@ const CricketScorer: React.FC = () => {
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <Typography variant="h6">
-                  {matchState.battingTeam} (Batting)
+                  {matchState.battingTeam} (Batting) vs {matchState.fieldingTeam} (Bowling)
                 </Typography>
                 <Typography>
                   {matchState.totalRuns}/{matchState.wickets} &nbsp; Overs:{" "}
                   {matchState.overs}.{matchState.balls}
                 </Typography>
-                <Typography>
+                <Typography className={classes.extras}>
                   Extras: W{matchState.extras.wide}, NB
                   {matchState.extras.noball}, LB{matchState.extras.legbye}, B
                   {matchState.extras.bye}
@@ -628,26 +530,30 @@ const CricketScorer: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {[players.striker, players.nonStriker].map((batsman) => (
-                      <TableRow key={batsman.id}>
-                        <TableCell>{batsman.name}</TableCell>
-                        <TableCell>{batsman.runs}</TableCell>
-                        <TableCell>{batsman.balls}</TableCell>
-                        <TableCell>{batsman.fours}</TableCell>
-                        <TableCell>{batsman.sixes}</TableCell>
-                        <TableCell>{batsman.strikeRate}</TableCell>
-                      </TableRow>
-                    ))}
+                    {[matchState.striker, matchState.nonStriker].map(
+                      (batsman) => (
+                        <TableRow key={batsman.id}>
+                          <TableCell className={batsman.id === matchState.striker.id ? classes.batsmanOnStrike : classes.batsman}>
+                            {batsman.name} {batsman.id === matchState.striker.id && "*"}
+                          </TableCell>
+                          <TableCell>{batsman.runs}</TableCell>
+                          <TableCell>{batsman.balls}</TableCell>
+                          <TableCell>{batsman.fours}</TableCell>
+                          <TableCell>{batsman.sixes}</TableCell>
+                          <TableCell>{batsman.strikeRate}</TableCell>
+                        </TableRow>
+                      )
+                    )}
                   </TableBody>
                 </Table>
               </Grid>
               <Grid item xs={12}>
-                <Typography variant="h6">Bowler</Typography>
+                <Typography variant="h6" className={classes.bowler}>Bowler</Typography>
                 <Typography>
-                  {players.bowler.name} - {players.bowler.overs}.
-                  {players.bowler.balls} overs, {players.bowler.runs} runs,{" "}
-                  {players.bowler.wickets} wickets, Economy:{" "}
-                  {players.bowler.economy}
+                  {matchState.bowler.name} - {matchState.bowler.overs}.
+                  {matchState.bowler.balls} overs, {matchState.bowler.runs}{" "}
+                  runs, {matchState.bowler.wickets} wickets, Economy:{" "}
+                  {matchState.bowler.economy}
                 </Typography>
               </Grid>
             </Grid>
@@ -658,7 +564,7 @@ const CricketScorer: React.FC = () => {
               Commentary
             </Typography>
             {commentary.map((text, index) => (
-              <Typography key={index} variant="body2">
+              <Typography key={index} variant="body2" className={classes.commentaryText}>
                 {text}
               </Typography>
             ))}

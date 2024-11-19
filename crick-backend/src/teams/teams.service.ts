@@ -4,7 +4,7 @@ import { Player, TeamsResponse } from './dto/teams.dto';
 @Injectable()
 export class TeamsService {
   private readonly teams: { name: string; players: Player[] }[] = [
-    {
+    { // mock data stored here for testing purposes
       name: 'India',
       players: [
         { id: 1, name: 'Virat Kohli', team: 'India' },
